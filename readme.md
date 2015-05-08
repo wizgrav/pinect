@@ -6,6 +6,7 @@ Gives you the depth data from kinect sensors.
 
 Also runs on embedded devices like the raspberry pi.
 
+[Here's a blog post with detailed explanation](http://wizgrav.com/pinect/2015/02/23/hello-pinect/)
 
 Install
 ===================
