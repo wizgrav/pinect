@@ -22,16 +22,16 @@
 #define D_USBI   6
 #define D_USBO   7
 
-extern int gspca_debug;
+extern int pinect_debug;
 
 
 #define PDEBUG(level, fmt, ...) \
-	v4l2_dbg(level, gspca_debug, &gspca_dev->v4l2_dev, fmt, ##__VA_ARGS__)
+	v4l2_dbg(level, pinect_debug, &pinect_dev->v4l2_dev, fmt, ##__VA_ARGS__)
 
 #define PERR(fmt, ...) \
-	v4l2_err(&gspca_dev->v4l2_dev, fmt, ##__VA_ARGS__)
+	v4l2_err(&pinect_dev->v4l2_dev, fmt, ##__VA_ARGS__)
 
-#define GSPCA_MAX_FRAMES 16	/* maximum number of video frame buffers */
+#define pinect_MAX_FRAMES 16	/* maximum number of video frame buffers */
 /* image transfers */
 #define MAX_NURBS 4		/* max number of URBs */
 
@@ -63,29 +63,29 @@ struct cam {
 				 * the max, even when using compression. */
 };
 
-struct gspca_dev;
-struct gspca_frame;
+struct pinect_dev;
+struct pinect_frame;
 
 /* subdriver operations */
-typedef int (*cam_op) (struct gspca_dev *);
-typedef void (*cam_v_op) (struct gspca_dev *);
-typedef int (*cam_cf_op) (struct gspca_dev *, const struct usb_device_id *);
-typedef int (*cam_get_jpg_op) (struct gspca_dev *,
+typedef int (*cam_op) (struct pinect_dev *);
+typedef void (*cam_v_op) (struct pinect_dev *);
+typedef int (*cam_cf_op) (struct pinect_dev *, const struct usb_device_id *);
+typedef int (*cam_get_jpg_op) (struct pinect_dev *,
 				struct v4l2_jpegcompression *);
-typedef int (*cam_set_jpg_op) (struct gspca_dev *,
+typedef int (*cam_set_jpg_op) (struct pinect_dev *,
 				const struct v4l2_jpegcompression *);
-typedef int (*cam_get_reg_op) (struct gspca_dev *,
+typedef int (*cam_get_reg_op) (struct pinect_dev *,
 				struct v4l2_dbg_register *);
-typedef int (*cam_set_reg_op) (struct gspca_dev *,
+typedef int (*cam_set_reg_op) (struct pinect_dev *,
 				const struct v4l2_dbg_register *);
-typedef int (*cam_chip_info_op) (struct gspca_dev *,
+typedef int (*cam_chip_info_op) (struct pinect_dev *,
 				struct v4l2_dbg_chip_info *);
-typedef void (*cam_streamparm_op) (struct gspca_dev *,
+typedef void (*cam_streamparm_op) (struct pinect_dev *,
 				  struct v4l2_streamparm *);
-typedef void (*cam_pkt_op) (struct gspca_dev *gspca_dev,
+typedef void (*cam_pkt_op) (struct pinect_dev *pinect_dev,
 				u8 *data,
 				int len);
-typedef int (*cam_int_pkt_op) (struct gspca_dev *gspca_dev,
+typedef int (*cam_int_pkt_op) (struct pinect_dev *pinect_dev,
 				u8 *data,
 				int len);
 
@@ -116,27 +116,27 @@ struct sd_desc {
 #endif
 #if IS_ENABLED(CONFIG_INPUT)
 	cam_int_pkt_op int_pkt_scan;
-	/* other_input makes the gspca core create gspca_dev->input even when
+	/* other_input makes the gspca core create pinect_dev->input even when
 	   int_pkt_scan is NULL, for cams with non interrupt driven buttons */
 	u8 other_input;
 #endif
 };
 
 /* packet types when moving from iso buf to frame buf */
-enum gspca_packet_type {
+enum pinect_packet_type {
 	DISCARD_PACKET,
 	FIRST_PACKET,
 	INTER_PACKET,
 	LAST_PACKET
 };
 
-struct gspca_frame {
+struct pinect_frame {
 	__u8 *data;			/* frame buffer */
 	int vma_use_count;
 	struct v4l2_buffer v4l2_buf;
 };
 
-struct gspca_dev {
+struct pinect_dev {
 	struct video_device vdev;	/* !! must be the first item */
 	struct module *module;		/* subdriver handling the device */
 	struct v4l2_device v4l2_dev;
@@ -169,13 +169,13 @@ struct gspca_dev {
 #endif
 
 	__u8 *frbuf;				/* buffer for nframes */
-	struct gspca_frame frame[GSPCA_MAX_FRAMES];
+	struct pinect_frame frame[pinect_MAX_FRAMES];
 	u8 *image;				/* image beeing filled */
 	__u32 frsz;				/* frame size */
 	u32 image_len;				/* current length of image */
 	atomic_t fr_q;				/* next frame to queue */
 	atomic_t fr_i;				/* frame being filled */
-	signed char fr_queue[GSPCA_MAX_FRAMES];	/* frame queue */
+	signed char fr_queue[pinect_MAX_FRAMES];	/* frame queue */
 	char nframes;				/* number of frames */
 	u8 fr_o;				/* next frame to dequeue */
 	__u8 last_packet_type;
@@ -208,28 +208,30 @@ struct gspca_dev {
 	   any code getting them needs to hold at least one of them */
 };
 
-int gspca_dev_probe(struct usb_interface *intf,
+int pinect_dev_probe(struct usb_interface *intf,
 		const struct usb_device_id *id,
 		const struct sd_desc *sd_desc,
 		int dev_size,
-		struct module *module);
-int gspca_dev_probe2(struct usb_interface *intf,
+		struct module *module,int alt);
+int pinect_dev_probe2(struct usb_interface *intf,
 		const struct usb_device_id *id,
 		const struct sd_desc *sd_desc,
 		int dev_size,
-		struct module *module);
-void gspca_disconnect(struct usb_interface *intf);
-void gspca_frame_add(struct gspca_dev *gspca_dev,
-			enum gspca_packet_type packet_type,
+		struct module *module, int alt);
+void pinect_disconnect(struct usb_interface *intf);
+void pinect_frame_add(struct pinect_dev *pinect_dev,
+			enum pinect_packet_type packet_type,
 			const u8 *data,
-			int len);
+			int len,
+			uint32_t pkt_num,
+			int rawlen, int diff);
 #ifdef CONFIG_PM
-int gspca_suspend(struct usb_interface *intf, pm_message_t message);
-int gspca_resume(struct usb_interface *intf);
+int pinect_suspend(struct usb_interface *intf, pm_message_t message);
+int pinect_resume(struct usb_interface *intf);
 #endif
-int gspca_expo_autogain(struct gspca_dev *gspca_dev, int avg_lum,
+int pinect_expo_autogain(struct pinect_dev *pinect_dev, int avg_lum,
 	int desired_avg_lum, int deadzone, int gain_knee, int exposure_knee);
-int gspca_coarse_grained_expo_autogain(struct gspca_dev *gspca_dev,
+int pinect_coarse_grained_expo_autogain(struct pinect_dev *pinect_dev,
         int avg_lum, int desired_avg_lum, int deadzone);
 
 #endif /* GSPCAV2_H */

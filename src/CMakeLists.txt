@@ -1,0 +1,30 @@
+if (WIN32)
+  set_source_files_properties(pinect.c PROPERTIES LANGUAGE CXX)
+endif(WIN32)
+
+
+if(PROJECT_OS_LINUX)
+if(LIBFREENECT_FOUND)
+include_directories (${CMAKE_CURRENT_SOURCE_DIR} ${LIBFREENECT_INCLUDE_DIRS})
+LIST(APPEND SRC pinect.c pinect-fnt.c pinect-v4l.c)
+else(LIBFREENECT_FOUND)
+include_directories (${CMAKE_CURRENT_SOURCE_DIR})
+LIST(APPEND SRC pinect.c pinect-v4l.c)
+endif(LIBFREENECT_FOUND)
+else(PROJECT_OS_LINUX)
+if(LIBFREENECT_FOUND)
+include_directories (${CMAKE_CURRENT_SOURCE_DIR} ${LIBFREENECT_INCLUDE_DIRS})
+LIST(APPEND SRC pinect.c pinect-fnt.c)
+else(LIBFREENECT_FOUND)
+message( FATAL_ERROR "Libfreenect is missing and platform is not linux." )
+endif(LIBFREENECT_FOUND)
+endif(PROJECT_OS_LINUX)
+
+if(LIBFREENECT_FOUND)
+add_definitions(-DUSE_FREENECT)
+endif(LIBFREENECT_FOUND)
+
+
+add_library (pinect SHARED ${SRC})
+target_link_libraries(pinect  ${LIBFREENECT_LIBRARIES} m)
+install (TARGETS pinect DESTINATION lib)

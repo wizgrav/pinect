@@ -1,15 +1,15 @@
 /*
- * kinect sensor device, gspca driver
- *
- * Copyright (C) 2014  Alexander Sosna <Alexander Sosna>
+ * kinect sensor device
+ * 
+ * Copyright (C) 2014  Yannis Gravezas <wizgrav@gmail.com>
  *
  * Based on the kinect video driver from:
- * Antonio Ospite <ospite@studenti.unina.it> in 2011
+ * Alexander Sosna <Alexander Sosna> and
+ * Antonio Ospite <ospite@studenti.unina.it>
  * and OpenKinect project and libfreenect
  * http://openkinect.org
  *
- * Special thanks to Antonio Ospite 
- * who made the video driver and encouraged me with my work. 
+ * Special thanks to Alexander Sosna and Antonio Ospite 
  * 
  * Thanks to openkinect.org / libfreenect for your work!
  *
@@ -28,15 +28,15 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
  /*
-  * This driver does _NOT_ work with the current versin of gspa_main, 
-  * it needs a patcht version which gives access to the second isoc entpoint.
+  * This driver does _NOT_ need gspa_main, it copies all relevant functionality
  */
  
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#define MODULE_NAME "kinect_depth"
+#define MODULE_NAME "pinect_depth"
 
 #include "gspca.h"
+
 
 #define CTRL_TIMEOUT 500
 #define OUTPUT_BUFFER_SIZE 1024  /* 0x400 ;) */
@@ -50,9 +50,11 @@
 #define PKT_SIZE 1760
 
 
-MODULE_AUTHOR("Alexander Sosna <alexander@xxor.de>");
-MODULE_DESCRIPTION("GSPCA/Kinect Sensor Device USB Driver for Depth Data");
+MODULE_AUTHOR("Yannis Gravezas <wizgrav@gmail.com>");
+MODULE_DESCRIPTION("Pinect Kinect driver");
 MODULE_LICENSE("GPL");
+int pinect_num_pkt = 16;
+module_param(pinect_num_pkt,int,0);
 
 struct pkt_hdr {
 	uint8_t magic[2];
@@ -74,23 +76,22 @@ struct cam_hdr {
 
 /* specific webcam descriptor */
 struct sd {
-	struct gspca_dev gspca_dev; /* !! must be the first item */
+	struct pinect_dev pinect_dev; /* !! must be the first item */
 	uint16_t cam_tag;           /* a sequence number for packets */
 	uint8_t stream_flag;       /* to identify different stream types */
 	uint8_t obuf[OUTPUT_BUFFER_SIZE]; /*ob for control commands */
 	uint8_t ibuf[INPUT_BUFFER_SIZE];  /* ib for control commands */
+	uint16_t pkt_num;
+	uint8_t synced;
+	uint8_t seq;
 };
 
-#define MODE_640x480   0x0001
-#define FORMAT_Y10B    0x0040
-#define FPS_HIGH       0x0100
-
 static const struct v4l2_pix_format video_camera_mode[] = {
-		{640, 480, V4L2_PIX_FMT_Y10BPACK, V4L2_FIELD_NONE,
-	 .bytesperline = 640 * 10 / 8,
-	 .sizeimage =  640 * 480 * 10 / 8,
+		{320, 240, V4L2_PIX_FMT_Y16, V4L2_FIELD_NONE,
+	 .bytesperline = 640,
+	 .sizeimage =  320 * 240 * 2,
 	 .colorspace = V4L2_COLORSPACE_SRGB,
-	 .priv = MODE_640x480 | FORMAT_Y10B | FPS_HIGH},
+	 .priv = 0},
 };
 
 static int kinect_write(struct usb_device *udev, uint8_t *data,
@@ -112,11 +113,13 @@ static int kinect_read(struct usb_device *udev, uint8_t *data, uint16_t wLength)
 			      0, 0, data, wLength, CTRL_TIMEOUT);
 }
 
-static int send_cmd(struct gspca_dev *gspca_dev, uint16_t cmd, void *cmdbuf,
+
+
+static int send_cmd(struct pinect_dev *pinect_dev, uint16_t cmd, void *cmdbuf,
 		unsigned int cmd_len, void *replybuf, unsigned int reply_len)
 {
-	struct sd *sd = (struct sd *) gspca_dev;
-	struct usb_device *udev = gspca_dev->dev;
+	struct sd *sd = (struct sd *) pinect_dev;
+	struct usb_device *udev = pinect_dev->dev;
 	int res, actual_len;
 	uint8_t *obuf = sd->obuf;
 	uint8_t *ibuf = sd->ibuf;
@@ -188,18 +191,18 @@ static int send_cmd(struct gspca_dev *gspca_dev, uint16_t cmd, void *cmdbuf,
 	return actual_len;
 }
 
-static int write_register(struct gspca_dev *gspca_dev, uint16_t reg,
+static int write_register(struct pinect_dev *pinect_dev, uint16_t reg,
 			uint16_t data)
 {
 	uint16_t reply[2];
 	uint16_t cmd[2];
 	int res;
-
+	
 	cmd[0] = cpu_to_le16(reg);
 	cmd[1] = cpu_to_le16(data);
 
 	PDEBUG(D_USBO, "Write Reg 0x%04x <= 0x%02x", reg, data);
-	res = send_cmd(gspca_dev, 0x03, cmd, 4, reply, 4);
+	res = send_cmd(pinect_dev, 0x03, cmd, 4, reply, 4);
 	if (res < 0)
 		return res;
 	if (res != 2) {
@@ -210,10 +213,10 @@ static int write_register(struct gspca_dev *gspca_dev, uint16_t reg,
 }
 
 /* this function is called at probe time */
-static int sd_config(struct gspca_dev *gspca_dev,
+static int sd_config(struct pinect_dev *pinect_dev,
 		     const struct usb_device_id *id)
 {
-	struct sd *sd = (struct sd *) gspca_dev;
+	struct sd *sd = (struct sd *) pinect_dev;
 	struct cam *cam;
 
 	sd->cam_tag = 0;
@@ -222,60 +225,58 @@ static int sd_config(struct gspca_dev *gspca_dev,
 	 * depth has stream flag = 0x70 */
 	sd->stream_flag = STREAM_FLAG;
 
-	cam = &gspca_dev->cam;
+	cam = &pinect_dev->cam;
 
 	cam->cam_mode = video_camera_mode;
 	cam->nmodes = ARRAY_SIZE(video_camera_mode);
 
-#if 0
-	/* Setting those values is not needed for video stream 
-	 * pkt_size = 1920 for video
-	 * pkt_size = 1760 for depth */
-	cam->npkt = 15;
-	gspca_dev->pkt_size = PKT_SIZE;
-#endif
+
+	cam->npkt = pinect_num_pkt;
+	pinect_dev->pkt_size = PKT_SIZE;
+
 
 	return 0;
 }
 
 /* this function is called at probe and resume time */
-static int sd_init(struct gspca_dev *gspca_dev)
+static int sd_init(struct pinect_dev *pinect_dev)
 {
 	PDEBUG(D_PROBE, "Kinect Camera device.");
 
 	return 0;
 }
 
-static int sd_start(struct gspca_dev *gspca_dev)
+	
+static int sd_start(struct pinect_dev *pinect_dev)
 {
 	/* Disable auto-cycle of projector */
-	write_register(gspca_dev, 0x105, 0x00);
+	write_register(pinect_dev, 0x105, 0x00);
 	/* reset depth stream */
-	write_register(gspca_dev, 0x06, 0x00);
+	write_register(pinect_dev, 0x06, 0x00);
 	/* Depth Stream Format 0x03: 11 bit stream | 0x02: 10 bit */
-	write_register(gspca_dev, 0x12, 0x02);
+	write_register(pinect_dev, 0x12, 0x03);
 	/* Depth Stream Resolution 1: standard (640x480) */
-	write_register(gspca_dev, 0x13, 0x01); 
+	write_register(pinect_dev, 0x13, 0x01); 
 	/* Depth Framerate / 0x1e (30): 30 fps */
-	write_register(gspca_dev, 0x14, 0x1e);
+	write_register(pinect_dev, 0x14, 0x1e);
 	/* Depth Stream Control  / 2: Open Depth Stream */
-	write_register(gspca_dev, 0x06, 0x02);	
+	write_register(pinect_dev, 0x06, 0x02);	
 	/* disable depth hflip / LSB = 0: Smoothing Disabled */
-	write_register(gspca_dev, 0x17, 0x00);	
+	write_register(pinect_dev, 0x17, 0x00);	
 
 	return 0;
 }
 
-static void sd_stopN(struct gspca_dev *gspca_dev)
+static void sd_stopN(struct pinect_dev *pinect_dev)
 {
 	/* reset depth stream */
-	write_register(gspca_dev, 0x06, 0x00);
+	write_register(pinect_dev, 0x06, 0x00);
 }
 
-static void sd_pkt_scan(struct gspca_dev *gspca_dev, u8 *__data, int len)
+static void sd_pkt_scan(struct pinect_dev *pinect_dev, u8 *__data, int len)
 {
-	struct sd *sd = (struct sd *) gspca_dev;
-
+	struct sd *sd = (struct sd *) pinect_dev;
+	int diff,lost,left,expected_pkt_size;
 	struct pkt_hdr *hdr = (void *)__data;
 	uint8_t *data = __data + sizeof(*hdr);
 	int datalen = len - sizeof(*hdr);
@@ -285,27 +286,78 @@ static void sd_pkt_scan(struct gspca_dev *gspca_dev, u8 *__data, int len)
 	uint8_t sof = sd->stream_flag | 1;
 	uint8_t mof = sd->stream_flag | 2;
 	uint8_t eof = sd->stream_flag | 5;
-
+	
 	if (len < 12)
 		return;
-
+	
 	if (hdr->magic[0] != RECEIVE_MAGIC_0 || hdr->magic[1] != RECEIVE_MAGIC_1) {
-		pr_warn("[Stream %02x] Invalid magic %02x%02x\n",
-			sd->stream_flag, hdr->magic[0], hdr->magic[1]);
+		//pr_warn("[Stream %02x] Invalid magic %02x%02x\n",
+			//sd->stream_flag, hdr->magic[0], hdr->magic[1]);
 		return;
 	}
-
+	
+	if (!sd->synced) {
+		if (hdr->flag != sof) {
+			return;
+		}
+		sd->synced = 1;
+		sd->seq = hdr->seq;
+		sd->pkt_num = 0;
+	}
+	if (sd->seq != hdr->seq) {
+		lost = hdr->seq - sd->seq;
+		sd->seq = hdr->seq;
+		left =  241 - sd->pkt_num;
+		
+		if (left <= lost) {
+			sd->pkt_num = lost - left;
+		} else {
+			sd->pkt_num += lost;
+		}
+		
+	}
+	
+	
+	
+	
+	if(sd->pkt_num > 146){
+		diff = 640*(sd->pkt_num-2);
+	}else if(sd->pkt_num > 73){
+		diff = 640*(sd->pkt_num-1);
+	}else{
+		diff = 640*sd->pkt_num;
+	}
+	
+	if (!(sd->pkt_num == 0 && hdr->flag == sof) &&
+		    !(sd->pkt_num == 241 && hdr->flag == eof) &&
+		    !(sd->pkt_num > 0 && sd->pkt_num < 421 && hdr->flag == mof)) {
+				sd->synced=0;
+				return;
+	}
+	expected_pkt_size = (sd->pkt_num == 241) ? 1144 : 1760;
+	
+	if (len != expected_pkt_size) {
+		sd->synced=0;
+		return;
+	}
 	if (hdr->flag == sof)
-		gspca_frame_add(gspca_dev, FIRST_PACKET, data, datalen);
+		pinect_frame_add(pinect_dev, FIRST_PACKET, (const uint8_t *)data, 320*2, sd->pkt_num, datalen, diff);
 
 	else if (hdr->flag == mof)
-		gspca_frame_add(gspca_dev, INTER_PACKET, data, datalen);
+		pinect_frame_add(pinect_dev, INTER_PACKET, (const uint8_t *)data, 320*2, sd->pkt_num, datalen, diff);
 
 	else if (hdr->flag == eof)
-		gspca_frame_add(gspca_dev, LAST_PACKET, data, datalen);
+		pinect_frame_add(pinect_dev, LAST_PACKET, (const uint8_t *)data, 320*2, sd->pkt_num, datalen, diff);
 
 	else
 		pr_warn("Packet type not recognized...\n");
+	if (hdr->flag == eof) {
+		sd->synced=0;
+	
+	}else{
+		sd->pkt_num++;
+		sd->seq++;
+	}
 }
 
 /* sub-driver description */
@@ -334,19 +386,19 @@ MODULE_DEVICE_TABLE(usb, device_table);
 /* -- device connect -- */
 static int sd_probe(struct usb_interface *intf, const struct usb_device_id *id)
 {
-	return gspca_dev_probe(intf, id, &sd_desc, sizeof(struct sd),
-				THIS_MODULE);
+	return pinect_dev_probe(intf, id, &sd_desc, sizeof(struct sd),
+				THIS_MODULE,id->idProduct == 0x02bf ? 1:0);
 }
 
 static struct usb_driver sd_driver = {
 	.name       = MODULE_NAME,
 	.id_table   = device_table,
 	.probe      = sd_probe,
-	.disconnect = gspca_disconnect,
+	.disconnect = pinect_disconnect,
 #ifdef CONFIG_PM
-	.suspend    = gspca_suspend,
-	.resume     = gspca_resume,
-	.reset_resume = gspca_resume,
+	.suspend    = pinect_suspend,
+	.resume     = pinect_resume,
+	.reset_resume = pinect_resume,
 #endif
 };
 

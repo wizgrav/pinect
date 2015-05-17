@@ -1,7 +1,8 @@
 USER	:= $(shell whoami)
-DEBUG   := y
+DEBUG   := n
 UNAME	:= $(shell uname -m)
-obj-m	:= gspca.o kinect.o  
+obj-m	:= pinect.o
+pinect-objs = gspca.o kinect.o 
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 
 ifeq ($(DEBUG),y)
@@ -22,10 +23,11 @@ endif
 
 default:
 	make pc
-
+	make lib
+	
 arm:
 	$(MAKE) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS) -C $(ARMKDIR) M=$(PWD) modules
-
+	make lib
 
 pc:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
@@ -35,14 +37,12 @@ unload_drivers:
 
 reload_video_drivers:
 	make unload_drivers
-	sudo modprobe gspca_main
-	sudo modprobe gspca_kinect
+	sudo modprobe pinect
 
 load:	
 	make unload_drivers
 	sudo modprobe videodev
-	sudo insmod gspca.ko
-	sudo insmod kinect.ko
+	sudo insmod pinect.ko
 	sudo chown -f -R $(USER):$(USER) /dev/video* 
 	sudo chmod -f 755 /dev/video*
 
@@ -58,7 +58,7 @@ fix-rights:
 	sudo chown -f -R $(USER):$(USER) $(PWD)
 
 clean:
-	rm -f *~ *.o *.ko
+	rm -f *~ *.o *.ko *.so
 	rm -f .built_in.o.cmd built_in.o
 	rm -f .*.cmd *.ko *.mod.c
 	rm -f *.symvers *.order
@@ -66,3 +66,9 @@ clean:
 	rm -f *.log
 	rm -rf modules.order *.mod.c
 	rm -rf Module.symvers
+lib:
+	gcc -shared -fpic pinect.c -o libpinect.so
+	
+install:
+	install libpinect.so /usr/local/lib/
+	
