@@ -1,3 +1,6 @@
 [submodule "deps/libfreenect"]
 	path = deps/libfreenect
 	url = https://github.com/OpenKinect/libfreenect.git
+[submodule "deps/libuvc"]
+	path = deps/libuvc
+	url = https://github.com/wizgrav/libuvc.git

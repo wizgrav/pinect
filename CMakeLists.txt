@@ -11,13 +11,8 @@ set (PROJECT_VER
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/")
 include (FindOS)
 include (SetupDirectories)
-find_package(libfreenect)
+find_package(libusb-1.0 REQUIRED)
 
-if(LIBFREENECT_FOUND)
-message( STATUS "Libfreenect found")
-else(LIBFREENECT_FOUND)
-message( WARNING "Libfreenect not found")
-endif(LIBFREENECT_FOUND)
 
 ######################################################################################
 # CMake 
@@ -31,6 +26,25 @@ if(CMAKE_C_FLAGS STREQUAL "")
 endif()
 add_definitions(-Wall)
 
+
+include(ExternalProject)
+
+ExternalProject_Add (
+       FREENECT_PROJ
+       DOWNLOAD_COMMAND ""
+       SOURCE_DIR ${CMAKE_SOURCE_DIR}/deps/libfreenect
+       CMAKE_ARGS -DBUILD_EXAMPLES=OFF -DBUILD_C_SYNC=OFF -DBUILD_FAKENECT=OFF
+       UPDATE_COMMAND ""
+       INSTALL_COMMAND "" )
+
+ExternalProject_Add (
+       UVC_PROJ
+       DOWNLOAD_COMMAND ""
+       SOURCE_DIR ${CMAKE_SOURCE_DIR}/deps/libuvc
+       CMAKE_ARGS -DCMAKE_BUILD_TARGET=Static
+       UPDATE_COMMAND ""
+       INSTALL_COMMAND "" )
+       
 add_subdirectory (src)
 
 configure_file(

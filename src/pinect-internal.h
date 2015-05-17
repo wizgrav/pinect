@@ -1,5 +1,5 @@
 /*
-Pinect, a helper lib for interacting with depth cameras
+Pinect, a helper lib for depth cameras
 Copyright (c) 2015, Yannis Gravezas,All rights reserved.
  
 Redistribution and use in source and binary forms, with or without
@@ -50,12 +50,9 @@ typedef CONDITION_VARIABLE pthread_cond_t;
 #define thread_start(dev) dev->thread = CreateThread(NULL,65536,(LPTHREAD_START_ROUTINE) & thread_func,dev,0,NULL)
 #define thread_stop(dev) dev->active=0; WaitForSingleObject(dev->thread, INFINITE);
 
-#elif defined linux
+#else
 
-#if defined USE_FREENECT
 #include <pthread.h>
-#include <libfreenect.h>
-#include <libfreenect_registration.h>
 
 #define thread_t pthread_t
 #define thread_start(dev)\
@@ -69,18 +66,23 @@ typedef CONDITION_VARIABLE pthread_cond_t;
 
 #endif
 
-#endif
+#include "../deps/libfreenect/include/libfreenect.h"
+#include "../deps/libfreenect/include/libfreenect_registration.h"
+#include "../deps/libuvc/include/libuvc/libuvc.h"
+
 
 #include "pinect.h"
 
-#if defined USE_FREENECT
-pinect_dev *fnt_pinect_new(char *f);
+pinect_dev *fnt_pinect_init(char *f);
 void fnt_pinect_free(pinect_dev *dev);
 unsigned short *fnt_pinect_grab(pinect_dev *dev, int t);
-#endif
+
+pinect_dev *uvc_pinect_init(char *f);
+void uvc_pinect_free(pinect_dev *dev);
+unsigned short *uvc_pinect_grab(pinect_dev *dev, int t);
 
 #if defined linux
-pinect_dev *v4l_pinect_new(char *f);
+pinect_dev *v4l_pinect_init(char *f);
 void v4l_pinect_free(pinect_dev *dev);
 unsigned short *v4l_pinect_grab(pinect_dev *dev, int t);
 #endif
@@ -96,7 +98,7 @@ typedef void (*pinect_free_fn)(pinect_dev *dev);
 
 typedef struct pinect_api{
   int id;
-  unsigned char *prefix;
+  char *prefix;
   pinect_new_fn newFn;
   pinect_free_fn freeFn;
   pinect_grab_fn grabFn;
@@ -114,17 +116,17 @@ typedef struct pinect_dev {
   pinect_api *api;
   int xres, yres, error;
   uint64_t latest, delta;
-  frame_t frames[3], *current;
-#if defined USE_FREENECT
-  frame_t *working,*spare;
+  frame_t frames[3], *current, *working,*spare;
   uint32_t wait,active,count;
   uint16_t depthtomm[2048];
   pthread_cond_t condition;
   pthread_mutex_t mutex;
   freenect_context *ctx;
   freenect_device *dev;
+  uvc_device_handle_t *udevh;
+  uvc_context_t *uctx;
+  uvc_device_t *udev;
   thread_t thread;
-#endif
 #if defined linux
   int fd;
 #endif

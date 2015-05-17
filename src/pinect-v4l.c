@@ -1,5 +1,5 @@
 /*
-Pinect, a helper lib for interacting with depth cameras
+Pinect, a helper lib for depth cameras
 Copyright (c) 2015, Yannis Gravezas,All rights reserved.
  
 Redistribution and use in source and binary forms, with or without
@@ -66,7 +66,7 @@ pinect_dev *v4l_pinect_init(char *f){
 			PUSHERRORNIL("caps");	
 		}
 	}
-
+	printf("V4L(%s)",cap.driver);
 	if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
 		close(fd);
 		PUSHERRORNIL("capture");

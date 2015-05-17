@@ -1,5 +1,5 @@
 /*
-Pinect, a helper lib for interacting with depth cameras
+Pinect, a helper lib for depth cameras
 Copyright (c) 2015, Yannis Gravezas,All rights reserved.
  
 Redistribution and use in source and binary forms, with or without
@@ -25,31 +25,47 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <unistd.h>
-
-typedef struct pinect_dev pinect_dev;
-
-enum {
-      PINECT_ATTR_ERROR=-1,
-      PINECT_ATTR_TYPE=0,
-      PINECT_ATTR_XRES=1,
-      PINECT_ATTR_YRES=2,
-      PINECT_ATTR_DELTA=3
-};
-
-enum {
-    PINECT_TYPE_V4L = 0,
-    PINECT_TYPE_FNT = 1
-};
-
-pinect_dev *pinect_init(char *f);
-void pinect_free(pinect_dev *device);
-int pinect_attr(pinect_dev *device, int attr);
-unsigned short *pinect_grab(pinect_dev *dev, int wait);
+#include "pinect-internal.h"
 
 
+pinect_dev *uvc_pinect_init(char *f){
+    int i;
+    pinect_dev *dev=(pinect_dev *)malloc(sizeof(pinect_dev));
+    memset(dev,0,sizeof(pinect_dev));
+    dev->count=0;
+    uvc_stream_ctrl_t ctrl;
+    uvc_error_t res;
+    res = uvc_init(&dev->uctx, NULL);
+    if (res < 0) {
+	free(dev);
+	return NULL;
+    }
+    res = uvc_find_device(dev->uctx, &dev->udev, 0x8086, 0x0a66, NULL);
+    if (res < 0) {
+	free(dev);
+	return NULL;
+    }
+    res = uvc_open(dev->udev, &dev->udevh);
+    if (res < 0) {
+	free(dev);
+	return NULL;
+    }
+    res = uvc_get_stream_ctrl_format_size( dev->udevh, &ctrl, UVC_FRAME_FORMAT_INVZ, 640, 480, 30);
+    if (res < 0) {
+	uvc_pinect_free(dev);
+	return NULL;
+    }
+    return dev;
+}
+
+void uvc_pinect_free(pinect_dev *dev){
+  uvc_close(dev->udevh);
+  uvc_unref_device(dev->udev);
+  uvc_exit(dev->uctx);  
+  free(dev);
+}
+
+
+unsigned short *uvc_pinect_grab(pinect_dev *dev, int t){
+    return NULL;
+}
